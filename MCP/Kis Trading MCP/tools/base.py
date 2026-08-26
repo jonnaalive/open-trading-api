@@ -20,8 +20,11 @@ class ApiExecutor:
         """초기화"""
         self.tool_name = tool_name
         self.temp_base_dir = "./tmp"
-        # 절대 경로로 venv python 설정
-        self.venv_python = os.path.join(os.getcwd(), ".venv", "bin", "python")
+        # 절대 경로로 venv python 설정 (Windows/Unix 분기)
+        if os.name == "nt":
+            self.venv_python = os.path.join(os.getcwd(), ".venv", "Scripts", "python.exe")
+        else:
+            self.venv_python = os.path.join(os.getcwd(), ".venv", "bin", "python")
 
         # temp 디렉토리 생성
         os.makedirs(self.temp_base_dir, exist_ok=True)
@@ -89,10 +92,10 @@ class ApiExecutor:
             discovered_mappings.append(f"{param_name}=xxx.{trenv_attr}")
         
         if discovered_mappings:
-            print(f"[🎯자동발견] {len(discovered_mappings)}개 매핑: {', '.join(discovered_mappings)}")
-            print(f"[🎯자동생성] {len(dynamic_mappings)}개 파라미터: {list(dynamic_mappings.keys())}")
+            print(f"[AUTO-DISCOVER] {len(discovered_mappings)} mappings: {', '.join(discovered_mappings)}")
+            print(f"[AUTO-GEN] {len(dynamic_mappings)} params: {list(dynamic_mappings.keys())}")
         else:
-            print("[🎯자동발견] .my_xxx 패턴 없음 - 조회성 API로 추정")
+            print("[AUTO-DISCOVER] .my_xxx pattern not found - read-only API")
         
         
         return dynamic_mappings
@@ -188,15 +191,13 @@ if __name__ == "__main__":
 
         result = {function_name}({", ".join([f"{k}={v if isinstance(v, str) and v.startswith('ka._TRENV.') else repr(v)}" for k, v in adjusted_params.items()])})
     except TypeError as e:
-        # 🚨 핵심 오류 메시지만 출력
-        print(f"❌ TypeError: {{str(e)}}")
+        print(f"[ERROR] TypeError: {{str(e)}}")
         print()
-        
-        # 파라미터 오류 처리 - LLM 교육용 메시지
+
         if 'stock_name' in {repr(list(params.keys()))}:
-            print("💡 해결방법: find_stock_code로 종목을 검색하세요.")
+            print("[TIP] find_stock_code로 종목을 검색하세요.")
         else:
-            print("💡 해결방법: find_api_detail로 API 상세 정보를 확인하세요")
+            print("[TIP] find_api_detail로 API 상세 정보를 확인하세요")
         import sys
         sys.exit(1)
     
@@ -241,16 +242,17 @@ if __name__ == "__main__":
         except Exception as e:
             raise Exception(f"코드 수정 실패: {str(e)}")
 
-    def _execute_code(self, temp_dir: str, timeout: int = 15) -> Dict[str, Any]:
+    def _execute_code(self, temp_dir: str, timeout: int = 30) -> Dict[str, Any]:
         """코드 실행"""
         try:
             # 실행할 파일 경로 (상대 경로로 변경)
             api_code_path = "api_code.py"
 
-            # subprocess로 코드 실행
+            # subprocess로 코드 실행 (stdin=DEVNULL: MCP stdio 파이프 상속 방지)
             result = subprocess.run(
                 [self.venv_python, api_code_path],
                 cwd=temp_dir,
+                stdin=subprocess.DEVNULL,
                 capture_output=True,
                 text=True,
                 timeout=timeout
@@ -302,7 +304,7 @@ if __name__ == "__main__":
             # 1. 임시 디렉토리 생성
             # FastMCP Context에서 request_id 안전하게 가져오기
             try:
-                request_id = ctx.get_state(factory.CONTEXT_REQUEST_ID)
+                request_id = await ctx.get_state(factory.CONTEXT_REQUEST_ID)
             except:
                 request_id = "unknown"
             temp_dir = self._create_temp_directory(request_id)
